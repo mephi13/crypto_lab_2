@@ -9,14 +9,16 @@ import blessed
 #number of bits the modulus
 n_bits = 20
 #number of samples captured by eve - (encrypted x, time to respond) tuples
-num_samples = 16
+num_samples = 64
 
 max_bactracks = 10
 
+# key gen function
 def key_gen(n_bits):
     N, e, d, p, q = naive_rsa.GenRSA("1" * (n_bits + 1))
     return (N, e, d, p, q)
 
+# decryptioon oracle for Eve
 def decryption_oracle(enc_x, N, d):
     start = time.time()
     #encrypt the message
@@ -36,12 +38,12 @@ alice["N"], alice["e"], alice["d"], alice["p"], alice["q"] = key_gen(n_bits)
 print("Modulus of the key is %s" % alice["N"])
 print("Private key is %s" % alice["d"])
 print( ("{0:b}").format(alice["d"]))
+
 #eve knows N
 eve["N"] = alice ["N"]
 
 #Alice knows every parameter of RSA
 print("Alice knows: ", alice.keys())
-
 
 #Evesdropping phase
 def gen_message_sets(N, d_i, n):
@@ -131,7 +133,8 @@ while True:
             backtracking = False
         else:
             print(term.cyan("*"), end='')
-    with term.location():
+
+    with term.location(0, term.height-1):
         print(term.gray("-") * alice["d"].bit_length(), end='')
 
     no_extra_r_ciphers, extra_r_ciphers = gen_message_sets(eve["N"], eve["d"], num_samples)
@@ -147,19 +150,10 @@ while True:
             _, res_time, r = decryption_oracle(c_text, alice["N"], alice["d"])
             extra_r_set[bit].append(r)
 
-    #times_f = [x[1] for x in fast_set_real]
-    #times_s = [x[1] for x in extra_r_set]
-    #r_f =  [x[2] for x in extra_r_set]
-    #r_s = [x[2] for x in fast_set_real]
-
-    #times_f_mean = np.array(times_f).mean()
-    #times_s_mean = np.array(times_s).mean()
     e_r_s_0 = np.array(extra_r_set[0])
     n_e_r_s_0 = np.array(no_extra_r_set[0])
     e_r_s_1 = np.array(extra_r_set[1])
     n_e_r_s_1 = np.array(no_extra_r_set[1])
-
-    #print(e_r_s_0.mean(), n_e_r_s_0.mean(), e_r_s_1.mean(), n_e_r_s_1.mean())
 
     if (significantly_larger(e_r_s_0.mean(), n_e_r_s_0.mean()) and fuzzy_equal(e_r_s_1.mean(), n_e_r_s_1.mean())):
         eve["d"] = eve["d"] * 2
@@ -175,25 +169,22 @@ while True:
         backtracking = True
 
     with term.location(eve["d"].bit_length()-1, term.height - 2):
-        #print(("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1])
         last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
         print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)), end='')
 
     eve["d"], cracked = check_key(alice, eve)
 
-    #print(term.clear_bol, end="")
     if(backtracks >= max_bactracks) or cracked:
         with term.location(eve["d"].bit_length()-1, term.height - 2):
-            #print(("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1])
             last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
             print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)), end='')
 
         print(term.gray("-") * alice["d"].bit_length())
         break
 
+# Key is cracked now, check the results
 
-
-if (eve["d"].bit_length() != alice["d"].bit_length()):
+if (eve["d"] != alice["d"]):
     print(term.red("Couldn't crack the key :( try again!"))
 else:
     print(("Cracking complete, the key is:"))
