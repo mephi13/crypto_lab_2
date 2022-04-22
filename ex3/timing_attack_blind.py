@@ -5,6 +5,7 @@ from random import randrange
 from matplotlib import pyplot
 import numpy as np
 import blessed
+import blind_signature
 
 #number of bits the modulus
 n_bits = 20
@@ -30,19 +31,27 @@ print("Modulus of the key is %s" % alice["N"])
 print("Private key is %s" % alice["d"])
 print( ("{0:b}").format(alice["d"]))
 
+# provider for blind signature scheme
+provider = blind_signature.blind_signature.provider(alice["N"], alice["e"])
+
 #eve knows N
 eve["N"] = alice ["N"]
 print("Eve knows: ", eve.keys())
 
-#Alice knows every parameter of RSA
+#Alice knows every parameter of RSA signature scheme
 print("Alice knows: ", alice.keys())
 
 # decryptioon oracle for Eve
 def decryption_oracle(enc_x, N, d):
     start = time.time()
     #encrypt the message
+    
+    # if the decryption oracle blinds the input, the timing attack doesnt work
+    enc_x = provider.c_prim(enc_x)
+
     x, h, r = naive_rsa.dec(enc_x, N, d)
     res_time = time.time() - start
+
     #eve eavesdrops the protocol, so she knows those
     return x, res_time, r
 
@@ -56,8 +65,13 @@ def gen_message_sets(N, d_i, n):
         while len(no_extra_set[bit]) < n or len(extra_set[bit]) < n:
             enc_x = randrange(0, N)
             
+            # if the attacker blinds the input, the attack still works obviously
+            # blind the input
+            # enc_x = provider.c(enc_x)
+
             #simulate decryption up to i 
-            m_temp, _, _ = decryption_oracle(enc_x,N, d_i)
+            m_temp, _, _ = decryption_oracle(enc_x, N, d_i)
+            #m_temp, _, _ = decryption_oracle(blinded_x, N, d_i)
 
             #simulate next decryption step up to the if d_j == 1 part
             m_temp = pow(m_temp, 2, N)
@@ -96,6 +110,7 @@ def check_key(a, e):
         d = e["d"] * 2 + bit
 
         c_text = randrange(1, e["N"])
+
         real_x, _, _ = decryption_oracle(c_text, e["N"], a["d"])
         guess_x, _, _ = decryption_oracle(c_text, e["N"], d)
         if real_x == guess_x:
@@ -115,7 +130,6 @@ if __name__== "__main__":
 
     with term.location(0, term.height - 1):
         print(term.green("1") + term.gray("_") * (alice["d"].bit_length() - eve["d"].bit_length()))
-
 
     last_bit = 1
     while True:
