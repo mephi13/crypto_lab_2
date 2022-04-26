@@ -1,6 +1,7 @@
 from collections import namedtuple
 import random
 import math
+from dataclasses import dataclass
 import naive_rsa
 # We will be using RSA to sign messages
 
@@ -10,7 +11,13 @@ blind_rsa = namedtuple("blind_rsa", "N e r")
 class blind_signature:
     """Blind signature cryptosystem."""
 
+    @dataclass
     class signer:
+        N: int
+        e: int
+        d: int
+        p: int 
+        q: int
         def __init__(self, modulus_bit_length=20):
             #set RSA params
             self.N, self.e, self.d, self.p, self.q = rsa(*naive_rsa.GenRSA(modulus_bit_length*"1"))
@@ -29,7 +36,11 @@ class blind_signature:
             """Inverse of signing function s' publicly known, such that s(s_prim(x)) == x."""
             return self.s(signature) == message
 
+    @dataclass
     class provider:
+        N: int
+        e: int
+        r: int
         def __init__(self, N, e):
             
             # calculate r, which will blind the input
@@ -63,11 +74,18 @@ class blind_signature:
 
 if __name__ == "__main__":
     # create signer and provider instances
-    signer = blind_signature.signer(20)
+    mes_str = "hello"
+    N_bits = 20
+
+    signer = blind_signature.signer(N_bits)
     provider = blind_signature.provider(signer.N, signer.e)
 
-    message = 100
-    print(f"message = {message}")
+    print(f"message to be signed = {mes_str}")
+    message = hash(mes_str) % signer.N
+    print(f"message hash = {message}")
+
+    print(signer)
+    print(provider)
 
     # provider chooses x at random and forms c(x)
     c_x = provider.c(message)
@@ -87,6 +105,6 @@ if __name__ == "__main__":
 
     verify =  signer.verify(message, s_prim_x)
 
-    print(f"Decrypted message = {decrypted_message}, real message = {message}")
+    print(f"Decrypted message hash = {decrypted_message}, real message hash = {message}")
     print("Signature " + "verified!" if message == decrypted_message else "not verified!")
 

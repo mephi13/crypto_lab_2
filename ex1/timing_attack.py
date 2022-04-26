@@ -2,7 +2,6 @@ import naive_rsa
 import time
 import sys
 from random import randrange
-from matplotlib import pyplot
 import numpy as np
 import blessed
 
@@ -10,32 +9,13 @@ import blessed
 n_bits = 20
 #number of samples captured by eve - (encrypted x, time to respond) tuples
 num_samples = 32
-
+#maximum amount of backtracks
 max_bactracks = 10
-
-print("RSA modulus is %s bits long, Eve has %s samples" % (n_bits, num_samples))
-#Alice is the party encrypting the message
-alice = {}
-#Eve is the attacker, she eavesdrops on the communcation protocol and know x, N, enc_x_s
-eve = {}
 
 # key gen function
 def key_gen(n_bits):
     N, e, d, p, q = naive_rsa.GenRSA("1" * (n_bits + 1))
     return (N, e, d, p, q)
-
-#Keygen phase
-alice["N"], alice["e"], alice["d"], alice["p"], alice["q"] = key_gen(n_bits)
-print("Modulus of the key is %s" % alice["N"])
-print("Private key is %s" % alice["d"])
-print( ("{0:b}").format(alice["d"]))
-
-#eve knows N
-eve["N"] = alice ["N"]
-print("Eve knows: ", eve.keys())
-
-#Alice knows every parameter of RSA
-print("Alice knows: ", alice.keys())
 
 # decryptioon oracle for Eve
 def decryption_oracle(enc_x, N, d):
@@ -57,7 +37,7 @@ def gen_message_sets(N, d_i, n):
             enc_x = randrange(0, N)
             
             #simulate decryption up to i 
-            m_temp, _, _ = decryption_oracle(enc_x,N, d_i)
+            m_temp, _, _ = naive_rsa.dec(enc_x,N, d_i)
 
             #simulate next decryption step up to the if d_j == 1 part
             m_temp = pow(m_temp, 2, N)
@@ -82,13 +62,13 @@ def requires_extra_reduction(m_temp: int, m: int, N: int, d_i: int, bit: int):
     return m_temp * m_temp >= N
 
 def backtrack(d_i):
-    return d_i // 2
+    return d_i // 2 if d_i != 1 else d_i
 
 def fuzzy_equal(mean_1, mean_2):
-    return abs(mean_1 - mean_2) < 0.4
+    return abs(mean_1 - mean_2) < 0.3
 
 def significantly_larger(mean_1, mean_2):
-    return (mean_1 - mean_2) > 0.6
+    return (mean_1 - mean_2) > 0.5
 
 def check_key(a, e):
 #we have to guess the last bit
@@ -104,6 +84,25 @@ def check_key(a, e):
     return (e["d"], False)
     
 if __name__== "__main__":
+    print("RSA modulus is %s bits long, Eve has %s samples" % (n_bits, num_samples))
+    #Alice is the party encrypting the message
+    alice = {}
+    #Eve is the attacker, she eavesdrops on the communcation protocol and know x, N, enc_x_s
+    eve = {}
+
+    #Keygen phase
+    alice["N"], alice["e"], alice["d"], alice["p"], alice["q"] = key_gen(n_bits)
+    print("Modulus of the key is %s" % alice["N"])
+    print("Private key is %s" % alice["d"])
+    print( ("{0:b}").format(alice["d"]))
+
+    #eve knows N
+    eve["N"] = alice ["N"]
+    print("Eve knows: ", eve.keys())
+
+    #Alice knows every parameter of RSA
+    print("Alice knows: ", alice.keys())
+
     l = 1
     eve["d"] = 1
     backtracks = 0
@@ -112,23 +111,24 @@ if __name__== "__main__":
     term = blessed.Terminal()
     print("Starting the crack...")
     print(term.cyan(("{0:b}").format(alice["d"])))
-
-    with term.location(0, term.height - 1):
-        print(term.green("1") + term.gray("_") * (alice["d"].bit_length() - eve["d"].bit_length()))
-
+    print(term.green("1") + term.gray("_") * (alice["d"].bit_length() - eve["d"].bit_length()))
+    print(term.gray("-") * alice["d"].bit_length())
+    print(term.move_up(2) + term.move_right, end="")
 
     last_bit = 1
     while True:
         # just printing stuff
-        with term.location(eve["d"].bit_length(), term.height - 2):
-            if backtracking:
-                print(term.red("*<") + term.gray("_"), end='')
-                backtracking = False
-            else:
-                print(term.cyan("*"), end='')
-        with term.location(0, term.height-1):
-            print(term.gray("-") * alice["d"].bit_length(), end='')
-
+        if backtracking:
+            print(term.move_left(2), end="")
+            with term.location():
+                print(term.red("*<"))
+            print(term.right, end="")
+            backtracking = False
+        else:
+            #print(term.move_right, end="")
+            with term.location():
+                print(term.cyan("*"), end="")
+            
 
         # generate sets of ciphertexts:
         # 1st set: We assume that the next bit of private key is equal to 0
@@ -175,26 +175,26 @@ if __name__== "__main__":
         # if for both assumed bits there is a significant difference between extra reduction and no extra reduction sets
         # or for both assumed bits the reductions in sets are roughly equal, we need to backtrack because
         # there's was probably a wrongly set bit before
-        else:
+        elif eve["d"] != 1:
             eve["d"] = backtrack(eve["d"])
+            
             backtracks += 1
             backtracking = True
+        else:
+            print(term.move_left, end="")
 
         # just printing stuff
-        with term.location(eve["d"].bit_length()-1, term.height - 2):
-            last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
-            print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)), end='')
+        last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
+        print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)), end="")
 
         # check if the key has been cracked, because we don't know how long is the key
         eve["d"], cracked = check_key(alice, eve)
 
         # if the key has been cracked or maximum amount of backtracks has been reached, leave the loop
         if(backtracks >= max_bactracks) or cracked:
-            with term.location(eve["d"].bit_length()-1, term.height - 2):
-                last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
-                print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)), end='')
+            last_bit = ("{0:b}").format(eve["d"])[eve["d"].bit_length() - 1]
+            print(term.green(str(last_bit)) if str(last_bit) == ("{0:b}").format(alice["d"])[eve["d"].bit_length() - 1] else term.red(str(last_bit)))
 
-            print(term.gray("-") * alice["d"].bit_length())
             break
 
     # Key is cracked now, check the results
